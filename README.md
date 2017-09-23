@@ -9,4 +9,4 @@ sharpire.exe "http://10.2.2.100:80" "aRAVQ_z?6PqujiWgf!eNwBZ&G)^h(L/|" "dotnet"
 
 *Note: This is still in testing. 
 
-HTTPS connections don't seem to be working properly at the moment.
+File upload and download are not completed yet.
