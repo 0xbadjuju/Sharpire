@@ -1,6 +1,0 @@
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\obj\Debug\Sharpire.csprojResolveAssemblyReference.cache
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\bin\Debug\Sharpire.exe
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\bin\Debug\Sharpire.pdb
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\bin\Debug\System.Management.Automation.dll
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\obj\Debug\Sharpire.exe
-C:\Users\aleary\Source\Repos\Sharpire\Sharpire\obj\Debug\Sharpire.pdb

