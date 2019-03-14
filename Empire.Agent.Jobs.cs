@@ -62,12 +62,18 @@ namespace Sharpire
                 List<string> jobsToRemove = new List<string>();
                 foreach (string jobName in jobs.Keys)
                 {
+#if (PRINT)
+                    Console.WriteLine("Job: {0}", jobName);
+#endif
                     string results = "";
                     if (jobs[jobName].IsCompleted())
                     {
                         try
                         {
                             results = jobs[jobName].GetOutput();
+#if (PRINT)
+                            Console.WriteLine(results);
+#endif
                             jobs[jobName].KillThread();
                         }
                         catch (NullReferenceException) { }
@@ -115,6 +121,9 @@ namespace Sharpire
             {
                 jobsId.Add(id, taskId);
             }
+#if (PRINT)
+            Console.WriteLine("Starting Job: {0}", id);
+#endif
             return id;
         }
 

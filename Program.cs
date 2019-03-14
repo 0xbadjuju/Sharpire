@@ -47,7 +47,6 @@ namespace Sharpire
         private string Proxy;
         private string ProxyCreds;
         private string KillDate;
-        private string WorkingHours;
         private DateTime WorkingHoursStart;
         private DateTime WorkingHoursEnd;
         private string AgentID;
@@ -82,6 +81,10 @@ namespace Sharpire
             uint.TryParse(ConfigurationManager.AppSettings["DefaultLostLimit"], out DefaultLostLimit);
 
             StagerUserAgent = ConfigurationManager.AppSettings["StagerUserAgent"];
+            if (string.IsNullOrEmpty(StagerUserAgent))
+            {
+                StagerUserAgent = UserAgent;
+            }
             StagerURI = ConfigurationManager.AppSettings["StagerURI"];
             Proxy = ConfigurationManager.AppSettings["Proxy"];
             ProxyCreds = ConfigurationManager.AppSettings["ProxyCreds"];
@@ -117,7 +120,6 @@ namespace Sharpire
         public string GetProxy() { return Proxy; }
         public string GetProxyCreds() { return ProxyCreds; }
         public string GetKillDate() { return KillDate; }
-        public string GetWorkingHours() { return WorkingHours; }
 
         public void SetWorkingHoursStart(DateTime WorkingHoursStart)
         {
