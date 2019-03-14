@@ -143,7 +143,7 @@ namespace Sharpire
         internal void SendMessage(byte[] packets)
         {
 #if (PRINT)
-            Console.WriteLine("Sending");
+            Console.WriteLine("Checking In");
 #endif
             byte[] ivBytes = NewInitializationVector(16);
             byte[] encryptedBytes = new byte[0];

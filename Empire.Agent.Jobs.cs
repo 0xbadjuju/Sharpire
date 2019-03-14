@@ -9,6 +9,7 @@ using System.Threading;
 namespace Sharpire
 {
     ////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
     public class JobTracking
     {
         public Dictionary<string, Job> jobs;
@@ -16,12 +17,14 @@ namespace Sharpire
         public byte[] ImportedScript { get; set; }
 
         ////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////
         public JobTracking()
         {
             jobs = new Dictionary<string, Job>();
             jobsId = new Dictionary<string, ushort>();
         }
 
+        ////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
         internal void CheckAgentJobs(ref byte[] packets, ref Coms coms)
         {
@@ -198,11 +201,20 @@ namespace Sharpire
                     if (true == isFinished)
                     {
                         return true;
+#if (Print)
+                    Console.WriteLine("Finished");
+#endif
                     }
                     return false;
+#if (Print)
+                    Console.WriteLine("Running");
+#endif
                 }
                 else
                 {
+#if (Print)
+                    Console.WriteLine("Finished");
+#endif
                     return true;
                 }
             }

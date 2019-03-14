@@ -19,7 +19,6 @@ namespace Sharpire
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool IsWow64Process([In] IntPtr process, [Out] out bool wow64Process);
 
-        private DateTime killDate;
         private byte[] packets;
         
         private SessionInfo sessionInfo;
@@ -59,7 +58,7 @@ namespace Sharpire
         private void Run()
         {
             ////////////////////////////////////////////////////////////////////////////////
-            if (killDate.CompareTo(DateTime.Now) > 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
+            if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
             {
                 jobTracking.CheckAgentJobs(ref packets, ref coms);
 
@@ -69,7 +68,7 @@ namespace Sharpire
                 }
 
                 string message = "";
-                if(killDate.CompareTo(DateTime.Now) > 0)
+                if(sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0)
                 {
                     message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: past killdate";
                 }
